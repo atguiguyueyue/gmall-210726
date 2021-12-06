@@ -12,6 +12,7 @@ import com.google.protobuf.InvalidProtocolBufferException;
 
 import java.net.InetSocketAddress;
 import java.util.List;
+import java.util.Random;
 
 public class CanalClient {
     public static void main(String[] args) throws InterruptedException, InvalidProtocolBufferException {
@@ -75,18 +76,35 @@ public class CanalClient {
     private static void handler(String tableName, CanalEntry.EventType eventType, List<CanalEntry.RowData> rowDatasList) {
         //获取订单表新增数据
         if ("order_info".equals(tableName)&&CanalEntry.EventType.INSERT.equals(eventType)){
-            for (CanalEntry.RowData rowData : rowDatasList) {
-                List<CanalEntry.Column> afterColumnsList = rowData.getAfterColumnsList();
-                //创建JSONObject用来存放每一列的列名和列值
-                JSONObject jsonObject = new JSONObject();
-                for (CanalEntry.Column column : afterColumnsList) {
-                    jsonObject.put(column.getName(), column.getValue());
-                }
-                System.out.println(jsonObject.toString());
+            saveToKafka(rowDatasList, GmallConstants.KAFKA_TOPIC_ORDER);
+            //获取订单明细表数据
+        }else if ("order_detail".equals(tableName)&&CanalEntry.EventType.INSERT.equals(eventType)){
+            saveToKafka(rowDatasList, GmallConstants.KAFKA_TOPIC_ORDER_DETAIL);
+            //获取用户表数据
+        }else if ("user_info".equals(tableName)&&(CanalEntry.EventType.INSERT.equals(eventType)||CanalEntry.EventType.UPDATE.equals(eventType))){
+            saveToKafka(rowDatasList, GmallConstants.KAFKA_TOPIC_USER);
+        }
+    }
 
-                //将封装后的JSON字符串写入Kafka
-                MyKafkaSender.send(GmallConstants.KAFKA_TOPIC_ORDER, jsonObject.toString());
+    private static void saveToKafka(List<CanalEntry.RowData> rowDatasList, String kafkaTopicOrder) {
+        for (CanalEntry.RowData rowData : rowDatasList) {
+            List<CanalEntry.Column> afterColumnsList = rowData.getAfterColumnsList();
+            //创建JSONObject用来存放每一列的列名和列值
+            JSONObject jsonObject = new JSONObject();
+            for (CanalEntry.Column column : afterColumnsList) {
+                jsonObject.put(column.getName(), column.getValue());
             }
+            System.out.println(jsonObject.toString());
+
+            //模拟网络震荡
+            try {
+                Thread.sleep(new Random().nextInt(5000));
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+            //将封装后的JSON字符串写入Kafka
+            MyKafkaSender.send(kafkaTopicOrder, jsonObject.toString());
         }
     }
 }
